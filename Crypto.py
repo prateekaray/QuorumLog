@@ -480,4 +480,38 @@ class FraudProof:
     entry_b: Entry
 
     def to_dict(self) -> dict:
-        return {"entry_a": self.entry
+        return {"entry_a": self.entry_a.to_dict(), "entry_b": self.entry_b.to_dict()}
+
+    @classmethod
+    def from_dict(cls, data: Any) -> "FraudProof":
+        if not isinstance(data, dict) or set(data) != {"entry_a", "entry_b"}:
+            raise CryptoError("fraud proof field set mismatch")
+        return cls(entry_a=Entry.from_dict(data["entry_a"]),
+                   entry_b=Entry.from_dict(data["entry_b"]))
+
+    @property
+    def accused(self) -> str:
+        return self.entry_a.author
+
+    @property
+    def proof_hash(self) -> str:
+        return sha256_hex(canonical_json(
+            {"a": self.entry_a.to_dict(), "b": self.entry_b.to_dict()}))
+
+
+def verify_fraud_proof(proof: FraudProof,
+                       difficulty: int = DEFAULT_DIFFICULTY) -> tuple[bool, str]:
+    a, b = proof.entry_a, proof.entry_b
+    if a.author != b.author:
+        return False, "fraud proof entries have different authors"
+    if a.seq != b.seq:
+        return False, "fraud proof entries have different seqs"
+    if a.entry_hash == b.entry_hash:
+        return False, "entries are identical (no conflict)"
+    ok, reason = verify_entry(a, difficulty)
+    if not ok:
+        return False, f"entry_a invalid: {reason}"
+    ok, reason = verify_entry(b, difficulty)
+    if not ok:
+        return False, f"entry_b invalid: {reason}"
+    return True, "ok"
